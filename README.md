@@ -84,11 +84,23 @@ A Rust TUI application for testing and comparing WiFi adapter signal strength. T
 - **AP Exclusion**: Hide APs you don't care about (per-session or permanently)
 - **Export**: Save sessions as JSON or CSV
 
+## About
+
+This tool was originally built for the [Hackberry Pi CM5](https://github.com/ZitaoTech/Hackberry-Pi_Zero) - a handheld Linux device with an 80x24 character terminal display. This explains several design decisions:
+
+- **Compact UI**: All screens fit within 80x24 characters
+- **Abbreviated labels**: Short key hints like `[spc]`, `[c]h`, `[f]req` to save space
+- **Single-adapter workflow**: Test one adapter at a time, then compare sessions (the Hackberry has limited USB ports)
+- **Keyboard-only navigation**: No mouse support - optimized for thumb keyboards
+- **Low refresh rate**: 250ms tick rate to conserve battery and reduce CPU usage
+
+The tool works great on any Linux terminal, but if you're wondering why everything is so compact - that's why!
+
 ## Requirements
 
 - Linux with `iw` command available
 - WiFi adapter
-- Terminal with at least 60x15 size (80x24 recommended)
+- Terminal with at least 60x15 size (80x24 recommended for best experience)
 
 ## Installation
 
@@ -228,7 +240,9 @@ Settings are automatically saved between sessions:
 
 ## Session File Format
 
-Sessions are stored as JSON:
+Sessions are stored as JSON in `~/.local/share/wificomp/sessions/`. Each file captures the complete scan history for one adapter testing session.
+
+### Example Session File
 
 ```json
 {
@@ -251,12 +265,69 @@ Sessions are stored as JSON:
           "signal_dbm": -45,
           "channel": 36,
           "frequency_mhz": 5180
+        },
+        {
+          "bssid": "11:22:33:44:55:66",
+          "ssid": "Neighbor_5G",
+          "signal_dbm": -52,
+          "channel": 40,
+          "frequency_mhz": 5200
+        },
+        {
+          "bssid": "AA:11:BB:22:CC:33",
+          "ssid": "CoffeeShop",
+          "signal_dbm": -67,
+          "channel": 6,
+          "frequency_mhz": 2437
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-01-31T14:30:10Z",
+      "access_points": [
+        {
+          "bssid": "AA:BB:CC:DD:EE:FF",
+          "ssid": "MyNetwork",
+          "signal_dbm": -43,
+          "channel": 36,
+          "frequency_mhz": 5180
+        },
+        {
+          "bssid": "11:22:33:44:55:66",
+          "ssid": "Neighbor_5G",
+          "signal_dbm": -54,
+          "channel": 40,
+          "frequency_mhz": 5200
+        },
+        {
+          "bssid": "AA:11:BB:22:CC:33",
+          "ssid": "CoffeeShop",
+          "signal_dbm": -65,
+          "channel": 6,
+          "frequency_mhz": 2437
         }
       ]
     }
   ]
 }
 ```
+
+### Field Descriptions
+
+| Field | Description |
+|-------|-------------|
+| `version` | File format version for compatibility |
+| `adapter.interface` | Linux network interface (e.g., wlan0, wlan1) |
+| `adapter.driver` | Kernel driver name |
+| `adapter.chipset` | Hardware chipset identifier |
+| `adapter.label` | User-defined friendly name |
+| `started_at` | Session start time (UTC ISO 8601) |
+| `duration_target_secs` | Timer setting in seconds (null if disabled) |
+| `scans[].timestamp` | When this scan was taken |
+| `scans[].access_points[]` | All APs detected in this scan |
+| `signal_dbm` | Signal strength in dBm (higher = better, typical range -30 to -90) |
+| `channel` | WiFi channel number |
+| `frequency_mhz` | Frequency in MHz (2400s = 2.4GHz, 5000s = 5GHz, 6000s = 6GHz) |
 
 ## Tips
 
