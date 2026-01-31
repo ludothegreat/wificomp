@@ -9,8 +9,8 @@ use chrono::Utc;
 use crate::config::Config;
 use crate::config::ExcludedAp;
 use crate::data::{
-    export, list_session_infos, load_session_validated, save_session, Adapter, ScanResult, Session,
-    SessionInfo,
+    export, list_adapter_dirs, list_session_infos_in_dir, load_session_validated, save_session,
+    Adapter, ScanResult, Session,
 };
 use crate::scanner::{detect_adapters, scan_wifi};
 use crate::ui::popups::FilePickerState;
@@ -59,7 +59,6 @@ pub struct App {
 
     // File picker state
     pub file_picker: FilePickerState,
-    pub session_infos: Vec<SessionInfo>,
 
     // Current session
     pub current_session: Option<Session>,
@@ -103,7 +102,6 @@ impl App {
             history,
             compare,
             file_picker: FilePickerState::default(),
-            session_infos: Vec::new(),
             current_session: None,
             session_modified: false,
             last_scan: None,
@@ -268,29 +266,40 @@ impl App {
         Ok(())
     }
 
-    pub fn refresh_session_list(&mut self) -> Result<()> {
-        self.session_infos = list_session_infos()?;
-        self.file_picker.files = self
-            .session_infos
-            .iter()
-            .map(|info| info.display_string())
-            .collect();
-        self.file_picker.selected = 0;
+    pub fn refresh_adapter_list(&mut self) -> Result<()> {
+        let adapters = list_adapter_dirs()?;
+        self.file_picker.set_adapters(adapters);
         Ok(())
     }
 
     pub fn get_selected_session_path(&self) -> Option<PathBuf> {
-        self.session_infos
-            .get(self.file_picker.selected)
+        self.file_picker
+            .get_selected_session()
             .map(|info| info.path.clone())
     }
 
     pub fn show_file_picker(&mut self) {
-        if let Err(e) = self.refresh_session_list() {
-            self.show_error(format!("Failed to list sessions: {}", e));
+        if let Err(e) = self.refresh_adapter_list() {
+            self.show_error(format!("Failed to list adapters: {}", e));
             return;
         }
         self.popup = Popup::FilePicker;
+    }
+
+    /// Enter selected adapter directory in file picker
+    pub fn file_picker_enter_adapter(&mut self) -> Result<()> {
+        if let Some(adapter) = self.file_picker.get_selected_adapter().cloned() {
+            let sessions = list_session_infos_in_dir(&adapter.path)?;
+            self.file_picker.enter_adapter(&adapter, sessions);
+        }
+        Ok(())
+    }
+
+    /// Go back to adapter list in file picker
+    pub fn file_picker_go_back(&mut self) -> Result<()> {
+        let adapters = list_adapter_dirs()?;
+        self.file_picker.go_back(adapters);
+        Ok(())
     }
 
     pub fn show_error(&mut self, message: String) {

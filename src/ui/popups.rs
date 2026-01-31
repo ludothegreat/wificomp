@@ -1,9 +1,13 @@
+use std::path::PathBuf;
+
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Clear, Paragraph, Widget},
 };
+
+use crate::data::{AdapterDirInfo, SessionInfo};
 
 /// Centered popup helper
 pub fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
@@ -163,22 +167,116 @@ impl<'a> Widget for InputPopup<'a> {
     }
 }
 
-/// File picker state
+/// File picker browsing level
+#[derive(Debug, Clone, PartialEq)]
+pub enum BrowseLevel {
+    /// Showing adapter directories
+    Adapters,
+    /// Showing sessions in a specific adapter directory
+    Sessions { adapter_path: PathBuf, adapter_name: String },
+}
+
+impl Default for BrowseLevel {
+    fn default() -> Self {
+        BrowseLevel::Adapters
+    }
+}
+
+/// File picker state with two-level navigation
 #[derive(Debug, Default)]
 pub struct FilePickerState {
-    pub files: Vec<String>,
+    /// Current browsing level
+    pub level: BrowseLevel,
+    /// Display strings for current level
+    pub items: Vec<String>,
+    /// Currently selected index
     pub selected: usize,
+    /// Adapter directories (when at Adapters level)
+    pub adapter_dirs: Vec<AdapterDirInfo>,
+    /// Session infos (when at Sessions level)
+    pub session_infos: Vec<SessionInfo>,
 }
 
 impl FilePickerState {
     pub fn select_next(&mut self) {
-        if !self.files.is_empty() {
-            self.selected = (self.selected + 1).min(self.files.len() - 1);
+        if !self.items.is_empty() {
+            self.selected = (self.selected + 1).min(self.items.len() - 1);
         }
     }
 
     pub fn select_prev(&mut self) {
         self.selected = self.selected.saturating_sub(1);
+    }
+
+    /// Check if we're at the adapter level
+    pub fn is_at_adapters(&self) -> bool {
+        matches!(self.level, BrowseLevel::Adapters)
+    }
+
+    /// Check if we're at the sessions level
+    pub fn is_at_sessions(&self) -> bool {
+        matches!(self.level, BrowseLevel::Sessions { .. })
+    }
+
+    /// Get the currently selected adapter directory (when at Adapters level)
+    pub fn get_selected_adapter(&self) -> Option<&AdapterDirInfo> {
+        if self.is_at_adapters() {
+            self.adapter_dirs.get(self.selected)
+        } else {
+            None
+        }
+    }
+
+    /// Get the currently selected session (when at Sessions level)
+    pub fn get_selected_session(&self) -> Option<&SessionInfo> {
+        if self.is_at_sessions() {
+            self.session_infos.get(self.selected)
+        } else {
+            None
+        }
+    }
+
+    /// Enter an adapter directory
+    pub fn enter_adapter(&mut self, adapter: &AdapterDirInfo, sessions: Vec<SessionInfo>) {
+        self.level = BrowseLevel::Sessions {
+            adapter_path: adapter.path.clone(),
+            adapter_name: adapter.name.clone(),
+        };
+        self.items = sessions.iter().map(|s| s.display_string()).collect();
+        self.session_infos = sessions;
+        self.selected = 0;
+    }
+
+    /// Go back to adapter list
+    pub fn go_back(&mut self, adapters: Vec<AdapterDirInfo>) {
+        self.level = BrowseLevel::Adapters;
+        self.items = adapters.iter().map(|a| a.display_string()).collect();
+        self.adapter_dirs = adapters;
+        self.selected = 0;
+    }
+
+    /// Initialize with adapter list
+    pub fn set_adapters(&mut self, adapters: Vec<AdapterDirInfo>) {
+        self.level = BrowseLevel::Adapters;
+        self.items = adapters.iter().map(|a| a.display_string()).collect();
+        self.adapter_dirs = adapters;
+        self.selected = 0;
+    }
+
+    /// Get current directory name for display
+    pub fn current_dir_name(&self) -> Option<&str> {
+        match &self.level {
+            BrowseLevel::Adapters => None,
+            BrowseLevel::Sessions { adapter_name, .. } => Some(adapter_name),
+        }
+    }
+}
+
+// Legacy compatibility
+impl FilePickerState {
+    #[allow(dead_code)]
+    pub fn files(&self) -> &Vec<String> {
+        &self.items
     }
 }
 
@@ -202,20 +300,43 @@ impl<'a> Widget for FilePicker<'a> {
 
         Clear.render(popup_area, buf);
 
+        // Build title with current path
+        let title = match &self.state.level {
+            BrowseLevel::Adapters => format!(" {} ", self.title),
+            BrowseLevel::Sessions { adapter_name, .. } => {
+                format!(" {} > {} ", self.title, adapter_name)
+            }
+        };
+
         let block = Block::default()
-            .title(format!(" {} ", self.title))
+            .title(title)
             .borders(Borders::ALL)
             .style(Style::default().bg(Color::Black));
         let inner = block.inner(popup_area);
         block.render(popup_area, buf);
 
-        if self.state.files.is_empty() {
+        if self.state.items.is_empty() {
+            let msg = if self.state.is_at_adapters() {
+                "No adapters found"
+            } else {
+                "No sessions found"
+            };
             buf.set_string(
                 inner.x + 1,
                 inner.y + inner.height / 2,
-                "No sessions found",
+                msg,
                 Style::default().fg(Color::DarkGray),
             );
+
+            // Still show help for going back
+            if self.state.is_at_sessions() {
+                buf.set_string(
+                    inner.x + 1,
+                    inner.y + inner.height - 1,
+                    "[Bksp] Back  [Esc] Cancel",
+                    Style::default().fg(Color::DarkGray),
+                );
+            }
             return;
         }
 
@@ -226,7 +347,7 @@ impl<'a> Widget for FilePicker<'a> {
             0
         };
 
-        for (i, file) in self.state.files.iter().skip(offset).take(visible_height).enumerate() {
+        for (i, item) in self.state.items.iter().skip(offset).take(visible_height).enumerate() {
             let y = inner.y + i as u16;
             let is_selected = offset + i == self.state.selected;
 
@@ -239,19 +360,25 @@ impl<'a> Widget for FilePicker<'a> {
             };
 
             let prefix = if is_selected { "▶ " } else { "  " };
-            let display = if file.len() > inner.width as usize - 4 {
-                format!("{}...{}", prefix, &file[file.len() - inner.width as usize + 7..])
+            let max_len = inner.width as usize - 4;
+            let display = if item.len() > max_len {
+                format!("{}{}...", prefix, &item[..max_len - 3])
             } else {
-                format!("{}{}", prefix, file)
+                format!("{}{}", prefix, item)
             };
             buf.set_string(inner.x + 1, y, &display, style);
         }
 
-        // Help text
+        // Help text depends on level
+        let help = if self.state.is_at_adapters() {
+            "[Enter] Open  [Esc] Cancel"
+        } else {
+            "[Enter] Load  [Bksp] Back  [Esc] Cancel"
+        };
         buf.set_string(
             inner.x + 1,
             inner.y + inner.height - 1,
-            "[Enter] Select  [Esc] Cancel",
+            help,
             Style::default().fg(Color::DarkGray),
         );
     }

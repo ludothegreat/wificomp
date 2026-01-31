@@ -21,18 +21,25 @@ pub fn ensure_sessions_dir() -> Result<PathBuf> {
     Ok(dir)
 }
 
-/// Generate a session filename from adapter
-pub fn session_filename(adapter: &super::models::Adapter) -> String {
-    let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
-    let safe_name = adapter.safe_name();
-    format!("{}_{}.json", safe_name, timestamp)
+/// Ensure an adapter subdirectory exists
+pub fn ensure_adapter_dir(adapter: &super::models::Adapter) -> Result<PathBuf> {
+    let base_dir = ensure_sessions_dir()?;
+    let adapter_dir = base_dir.join(adapter.safe_name());
+    fs::create_dir_all(&adapter_dir).context("Failed to create adapter directory")?;
+    Ok(adapter_dir)
 }
 
-/// Save a session to disk
+/// Generate a session filename (without adapter prefix since it's in a subdirectory now)
+pub fn session_filename() -> String {
+    let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
+    format!("{}.json", timestamp)
+}
+
+/// Save a session to disk (in adapter subdirectory)
 pub fn save_session(session: &Session) -> Result<PathBuf> {
-    let dir = ensure_sessions_dir()?;
-    let filename = session_filename(&session.adapter);
-    let path = dir.join(&filename);
+    let adapter_dir = ensure_adapter_dir(&session.adapter)?;
+    let filename = session_filename();
+    let path = adapter_dir.join(&filename);
 
     let json = serde_json::to_string_pretty(session).context("Failed to serialize session")?;
     fs::write(&path, json).context("Failed to write session file")?;
@@ -99,8 +106,22 @@ pub fn load_session_validated(path: &Path) -> Result<(Session, SessionValidation
     Ok((session, validation))
 }
 
-/// List all saved sessions
-pub fn list_sessions() -> Result<Vec<PathBuf>> {
+/// Adapter directory info
+#[derive(Debug, Clone)]
+pub struct AdapterDirInfo {
+    pub path: PathBuf,
+    pub name: String,
+    pub session_count: usize,
+}
+
+impl AdapterDirInfo {
+    pub fn display_string(&self) -> String {
+        format!("📁 {} ({} sessions)", self.name, self.session_count)
+    }
+}
+
+/// List all adapter directories
+pub fn list_adapter_dirs() -> Result<Vec<AdapterDirInfo>> {
     let dir = match sessions_dir() {
         Ok(d) => d,
         Err(_) => return Ok(Vec::new()),
@@ -110,8 +131,52 @@ pub fn list_sessions() -> Result<Vec<PathBuf>> {
         return Ok(Vec::new());
     }
 
-    let mut sessions: Vec<PathBuf> = fs::read_dir(&dir)
-        .context("Failed to read sessions directory")?
+    let mut adapters: Vec<AdapterDirInfo> = Vec::new();
+
+    for entry in fs::read_dir(&dir).context("Failed to read sessions directory")? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            let name = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+
+            // Count sessions in this directory
+            let session_count = fs::read_dir(&path)
+                .map(|entries| {
+                    entries
+                        .filter_map(|e| e.ok())
+                        .filter(|e| e.path().extension().map(|ext| ext == "json").unwrap_or(false))
+                        .count()
+                })
+                .unwrap_or(0);
+
+            if session_count > 0 {
+                adapters.push(AdapterDirInfo {
+                    path,
+                    name,
+                    session_count,
+                });
+            }
+        }
+    }
+
+    // Sort by name
+    adapters.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+    Ok(adapters)
+}
+
+/// List sessions in a specific adapter directory
+pub fn list_sessions_in_dir(adapter_dir: &Path) -> Result<Vec<PathBuf>> {
+    if !adapter_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut sessions: Vec<PathBuf> = fs::read_dir(adapter_dir)
+        .context("Failed to read adapter directory")?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.extension().map(|e| e == "json").unwrap_or(false))
@@ -127,17 +192,42 @@ pub fn list_sessions() -> Result<Vec<PathBuf>> {
     Ok(sessions)
 }
 
-/// Check if a session exists for the given adapter
-pub fn find_existing_session(interface: &str) -> Result<Option<PathBuf>> {
-    let sessions = list_sessions()?;
-    for path in sessions {
-        if let Ok(session) = load_session(&path) {
-            if session.adapter.interface == interface {
-                return Ok(Some(path));
+/// List all saved sessions (legacy - scans all directories)
+pub fn list_sessions() -> Result<Vec<PathBuf>> {
+    let dir = match sessions_dir() {
+        Ok(d) => d,
+        Err(_) => return Ok(Vec::new()),
+    };
+
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut sessions: Vec<PathBuf> = Vec::new();
+
+    // Check for legacy sessions in root directory
+    for entry in fs::read_dir(&dir).context("Failed to read sessions directory")? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_file() && path.extension().map(|e| e == "json").unwrap_or(false) {
+            sessions.push(path);
+        } else if path.is_dir() {
+            // Scan subdirectory for sessions
+            if let Ok(sub_sessions) = list_sessions_in_dir(&path) {
+                sessions.extend(sub_sessions);
             }
         }
     }
-    Ok(None)
+
+    // Sort by modification time, newest first
+    sessions.sort_by(|a, b| {
+        let a_time = fs::metadata(a).and_then(|m| m.modified()).ok();
+        let b_time = fs::metadata(b).and_then(|m| m.modified()).ok();
+        b_time.cmp(&a_time)
+    });
+
+    Ok(sessions)
 }
 
 /// Session info for listing purposes
@@ -166,8 +256,17 @@ impl SessionInfo {
         })
     }
 
-    /// Display string for file picker
+    /// Display string for file picker (shorter, no adapter name since we're in adapter dir)
     pub fn display_string(&self) -> String {
+        format!(
+            "{} - {} scans",
+            self.started_at,
+            self.scan_count
+        )
+    }
+
+    /// Full display string with adapter name
+    pub fn display_string_full(&self) -> String {
         format!(
             "{} ({}) - {} scans",
             self.adapter_name,
@@ -177,7 +276,19 @@ impl SessionInfo {
     }
 }
 
-/// List sessions with info
+/// List sessions with info from a specific adapter directory
+pub fn list_session_infos_in_dir(adapter_dir: &Path) -> Result<Vec<SessionInfo>> {
+    let paths = list_sessions_in_dir(adapter_dir)?;
+    let mut infos = Vec::new();
+    for path in paths {
+        if let Ok(info) = SessionInfo::from_path(&path) {
+            infos.push(info);
+        }
+    }
+    Ok(infos)
+}
+
+/// List all sessions with info (legacy)
 pub fn list_session_infos() -> Result<Vec<SessionInfo>> {
     let paths = list_sessions()?;
     let mut infos = Vec::new();

@@ -318,11 +318,27 @@ fn handle_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
                 KeyCode::Up => app.file_picker.select_prev(),
                 KeyCode::Down => app.file_picker.select_next(),
                 KeyCode::Enter => {
-                    if let Some(path) = app.get_selected_session_path() {
-                        if let Err(e) = app.load_session_file(&path) {
-                            app.show_error(format!("Failed to load: {}", e));
-                        } else {
-                            app.popup = Popup::None;
+                    if app.file_picker.is_at_adapters() {
+                        // Enter adapter directory
+                        if let Err(e) = app.file_picker_enter_adapter() {
+                            app.show_error(format!("Failed to open adapter: {}", e));
+                        }
+                    } else {
+                        // Load selected session
+                        if let Some(path) = app.get_selected_session_path() {
+                            if let Err(e) = app.load_session_file(&path) {
+                                app.show_error(format!("Failed to load: {}", e));
+                            } else {
+                                app.popup = Popup::None;
+                            }
+                        }
+                    }
+                }
+                KeyCode::Backspace => {
+                    // Go back to adapter list
+                    if app.file_picker.is_at_sessions() {
+                        if let Err(e) = app.file_picker_go_back() {
+                            app.show_error(format!("Failed to go back: {}", e));
                         }
                     }
                 }
