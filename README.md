@@ -333,7 +333,7 @@ Sessions are stored as JSON in `~/.local/share/wificomp/sessions/`. Each file ca
 
 - **Consistent testing**: Test adapters in the same location and time period for fair comparison
 - **Use labels**: Press `r` to label adapters - makes comparison much easier
-- **Exclude noise**: Use `x` to hide APs you don't care about
+- **Exclude noise**: Use `x` to hide APs you don't want scanned
 - **Match by SSID**: If BSSIDs differ between scans (AP roaming), use SSID matching in Compare
 - **Check stability**: The History graph shows signal stability, not just strength
 - **5GHz vs 2.4GHz**: Use frequency filter (`f`) to compare performance on specific bands
