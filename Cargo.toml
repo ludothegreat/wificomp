@@ -2,7 +2,12 @@
 name = "wificomp"
 version = "0.1.0"
 edition = "2021"
-description = "WiFi adapter comparison tool"
+description = "WiFi adapter comparison tool - Test and compare WiFi adapter signal strength"
+authors = ["ludothegreat <ludothegreat@gmail.com>"]
+license = "MIT"
+repository = "https://gitforge.online/ludothegreat/wificomp"
+keywords = ["wifi", "wireless", "tui", "comparison", "signal"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 ratatui = "0.28"

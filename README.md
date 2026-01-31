@@ -2,6 +2,79 @@
 
 A Rust TUI application for testing and comparing WiFi adapter signal strength. Test one adapter at a time, save results, then compare multiple sessions side-by-side to find which adapter performs best in your environment.
 
+## Screenshots
+
+### Live Scan Screen
+
+```
+┌─ wificomp ──────────────────────────── [1]Live │ [2]Hist │ [3]Cmp ─┐
+│ Intel AX200 "USB Dongle"                                  [r]ename │
+│ Timer: 02:34/05:00  Auto: ON 5s  APs: 8                   [t] [a]  │
+├────────────────────────────────────────────────────────────────────┤
+│ SSID            Signal                                  CH   Band  │
+├────────────────────────────────────────────────────────────────────┤
+│ MyNetwork       -42 ████████████████████████████████████  36   5G  │
+│ Neighbor_5G     -51 █████████████████████████████         40   5G  │
+│ CoffeeShop      -58 ████████████████████████              6    2G  │
+│ HomeBase        -63 █████████████████████                 11   2G  │
+│ Guest_Network   -71 ███████████████                       1    2G  │
+│ IoT_Devices     -76 ████████████                          6    2G  │
+│ <hidden>        -82 ████████                              11   2G  │
+│ FreeWiFi        -89 ████                                  1    2G  │
+│                                                                    │
+├────────────────────────────────────────────────────────────────────┤
+│ [spc]scan [c]h [b]and [f]req [s]ort:Sig [x]clude [e]xp [q]uit      │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### History Screen
+
+```
+┌─ History ───────────────────────────── [1]Live │ [2]Hist │ [3]Cmp ─┐
+│ Intel AX200 "USB Dongle" | 5:00 | 60 scans                 [l]oad  │
+├────────────────────────────────────────────────────────────────────┤
+│ AP: MyNetwork (AA:BB:CC:DD:EE:FF)                          [↑][↓]  │
+│ Time: [5m] 10m 30m All   Data: [Raw] Avg                           │
+├────────────────────────────────────────────────────────────────────┤
+│ -40│                    ██                                         │
+│    │         ██ ██ ██ ████ ██                                      │
+│ -50│██ ██ ████████████████████████ ██                              │
+│    │                              ████████                         │
+│ -60│                                      ████ ██                  │
+│    │                                          ████                 │
+│ -70│                                                               │
+│    └─────────────────────────────────────────────────────          │
+│     14:30       14:32       14:34       14:36       14:38          │
+├────────────────────────────────────────────────────────────────────┤
+│ Avg: -48 dBm   Min: -61 dBm   Max: -42 dBm   Samples: 60           │
+├────────────────────────────────────────────────────────────────────┤
+│ [w]indow [d]ata [e]xport [q]uit                                    │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### Compare Screen
+
+```
+┌─ Compare ───────────────────────────── [1]Live │ [2]Hist │ [3]Cmp ─┐
+│ Sessions: 3 loaded                                  [+]add [x]del  │
+├────────────────────────────────────────────────────────────────────┤
+│ 1. USB Dongle      Intel AX200    01-31 14:30   12 scans           │
+│ 2. PCIe Card       Intel AX210    01-31 14:45   15 scans           │
+│ 3. Cheap Stick     RTL8812AU      01-31 15:00   10 scans           │
+├────────────────────────────────────────────────────────────────────┤
+│ AP: MyNetwork                                                [↑↓]  │
+│ Match: [BSSID] SSID Both   Metric: [Avg] Min Max                   │
+├────────────────────────────────────────────────────────────────────┤
+│ USB Dongle    -45 ████████████████████████████████████████████  ★  │
+│ PCIe Card     -52 ████████████████████████████████████             │
+│ Cheap Stick   -68 ████████████████████████                         │
+├────────────────────────────────────────────────────────────────────┤
+│ Best: USB Dongle (7/8 APs strongest)                               │
+├────────────────────────────────────────────────────────────────────┤
+│ [+]load [m]atch [M]etric [e]xport [q]uit                           │
+└────────────────────────────────────────────────────────────────────┘
+```
+
 ## Features
 
 - **Live Scanning**: Real-time WiFi scanning with configurable auto-scan interval
@@ -124,6 +197,16 @@ sudo wificomp --no-auto-scan
 | `↑/↓` | Select AP |
 | `←/→` | Select session |
 
+## Signal Strength Guide
+
+| dBm Range | Quality | Bar Fill |
+|-----------|---------|----------|
+| -30 to -50 | Excellent | ████████████████ |
+| -50 to -60 | Good | ████████████ |
+| -60 to -70 | Fair | ████████ |
+| -70 to -80 | Weak | ████ |
+| -80 to -90 | Poor | ██ |
+
 ## File Locations
 
 | Type | Location |
@@ -182,6 +265,7 @@ Sessions are stored as JSON:
 - **Exclude noise**: Use `x` to hide APs you don't care about
 - **Match by SSID**: If BSSIDs differ between scans (AP roaming), use SSID matching in Compare
 - **Check stability**: The History graph shows signal stability, not just strength
+- **5GHz vs 2.4GHz**: Use frequency filter (`f`) to compare performance on specific bands
 
 ## Troubleshooting
 
@@ -204,6 +288,12 @@ Sessions are stored as JSON:
 - Session may have been interrupted before any scans completed
 - Check the session file for scan data
 
+## Author
+
+**ludothegreat**
+- Email: ludothegreat@gmail.com
+- GitHub: [@ludothegreat](https://github.com/ludothegreat)
+
 ## License
 
-MIT
+MIT License - see [LICENSE](LICENSE) file for details.
