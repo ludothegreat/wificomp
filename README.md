@@ -359,12 +359,6 @@ Sessions are stored as JSON in `~/.local/share/wificomp/sessions/`. Each file ca
 - Session may have been interrupted before any scans completed
 - Check the session file for scan data
 
-## Author
-
-**ludothegreat**
-- Email: ludothegreat@gmail.com
-- GitHub: [@ludothegreat](https://github.com/ludothegreat)
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
